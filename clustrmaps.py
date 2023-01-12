@@ -5,7 +5,6 @@ from undetected_chromedriver import Chrome
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.service import Service
 from selenium.common.exceptions import NoSuchElementException,StaleElementReferenceException
 from parsel import Selector
 from urllib.parse import urljoin
@@ -29,10 +28,11 @@ class Clustr():
         return driver
 
     @staticmethod
-    def is_match(found_name, orig_name):
+    def is_match(found_name, first, last):
+        first = first.strip().lower()
+        last = last.strip().lower()
         found_name = found_name.strip().lower()
-        orig_name = orig_name.strip().lower()
-        if found_name in orig_name:
+        if first in found_name and last in found_name:
             return True
         else:
             return False
@@ -50,7 +50,6 @@ class Clustr():
         logger.debug(f'search_person completed')
 
     def search_address(self, driver, address, first, last):
-        orig_name = first + ' ' + last
         logger.debug(f'search_via address : {address}')
         driver.get(self.BASE_URL)
         driver.find_element(By.XPATH, "//input[@name='address']").send_keys(address)
@@ -63,7 +62,7 @@ class Clustr():
             for resident in residents:
                 found_name = resident.find_element(By.XPATH, ".//span[@itemprop='name']").text
                 url = resident.find_element(By.XPATH, ".//span[@itemprop='name']/ancestor::a").get_attribute("href")
-                if self.is_match(found_name, orig_name):
+                if self.is_match(found_name, first, last):
                     logger.info(" Match Found ")
                     return url
         else:
