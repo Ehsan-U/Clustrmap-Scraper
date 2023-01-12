@@ -50,6 +50,7 @@ class Clustr():
         driver.find_element(By.XPATH, '//input[@name="q"]').send_keys(person_name)
         driver.find_element(By.XPATH, '//input[@name="q"]').submit()
         logger.debug(f'search_person completed')
+
     def search_address(self, driver, address, first, last):
         orig_name = first + last
         logger.debug(f'search_via address : {address}')
@@ -73,6 +74,7 @@ class Clustr():
         logger.debug(f'get_person_with_specific_city')
         sel = Selector(driver.page_source)
         return sel.xpath(f'//div[@itemprop="Person" and .//div[@class="person_city person_details i_home" and contains(text(),"{city}")]]/div/div/a/@href').get()
+
     def extract_person_data(self, row, driver):
         logger.debug(f'extract_person_data')
         sel = Selector(driver.page_source)
@@ -86,6 +88,7 @@ class Clustr():
                 phones.append(phone.strip())
         row[f'Phone'] = ",".join(phones)
         return row
+
     def check_if_xpath_exists(self, xpath, driver):
         logger.debug(f'check_if_xpath_exists:{xpath}')
         try:
@@ -93,6 +96,7 @@ class Clustr():
         except NoSuchElementException:
             return False
         return True
+
     def is_result_found(self, driver):
         logger.debug(f'is_result_found')
         for i in range(20):
@@ -102,6 +106,7 @@ class Clustr():
                 return False
             time.sleep(1)
         return False
+
     def scrape_person(self, driver, person_url, row, people_method=None):
         if people_method:
             while True:
@@ -131,6 +136,7 @@ class Clustr():
             logger.info(f"Scraped: {person_info}")
             df = pd.DataFrame(self.all_data, columns=self.all_cols)
             df.to_csv('out.csv')
+            
     def start(self):
         driver = self.init_driver()
         for n, row in self.all_person_data.iterrows():
