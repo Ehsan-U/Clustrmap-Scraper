@@ -6,7 +6,6 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
 from selenium.common.exceptions import NoSuchElementException,StaleElementReferenceException
 from parsel import Selector
 from urllib.parse import urljoin
@@ -26,14 +25,13 @@ class Clustr():
             self.all_cols.append('PROBABLE EMAIL')
 
     def init_driver(self):
-        s = Service(ChromeDriverManager().install())
-        driver = Chrome(service=s, headless=False)
+        driver = Chrome(headless=False)
         return driver
 
     @staticmethod
     def is_match(name1, name2):
-        name1 = name1.strip().replace(' ','').lower()
-        name2 = name2.strip().replace(' ','').lower()
+        name1 = name1.strip()
+        name2 = name2.strip()
         if name1 == name2:
             return True
         else:
@@ -52,7 +50,7 @@ class Clustr():
         logger.debug(f'search_person completed')
 
     def search_address(self, driver, address, first, last):
-        orig_name = first + last
+        orig_name = first + ' ' + last
         logger.debug(f'search_via address : {address}')
         driver.get(self.BASE_URL)
         driver.find_element(By.XPATH, "//input[@name='address']").send_keys(address)
@@ -136,7 +134,7 @@ class Clustr():
             logger.info(f"Scraped: {person_info}")
             df = pd.DataFrame(self.all_data, columns=self.all_cols)
             df.to_csv('out.csv')
-            
+
     def start(self):
         driver = self.init_driver()
         for n, row in self.all_person_data.iterrows():
