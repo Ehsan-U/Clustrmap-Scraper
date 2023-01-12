@@ -29,10 +29,10 @@ class Clustr():
         return driver
 
     @staticmethod
-    def is_match(name1, name2):
-        name1 = name1.strip()
-        name2 = name2.strip()
-        if name1 == name2:
+    def is_match(found_name, orig_name):
+        found_name = found_name.strip().lower()
+        orig_name = orig_name.strip().lower()
+        if found_name in orig_name:
             return True
         else:
             return False
