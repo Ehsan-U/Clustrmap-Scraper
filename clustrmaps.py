@@ -63,6 +63,7 @@ class Clustr():
 
     # search by address
     def get_address_url(self, address):
+        logger.debug(f'search_via address : {address}')
         payload = {"action":'tools.suggest_all', "start":address}
         response = requests.post(self.search_api, headers=self.headers, data=payload).json()
         if response.get("values").get("address"):
@@ -72,7 +73,6 @@ class Clustr():
     
 
     def search_address(self, driver, address, url, first, last):
-        logger.debug(f'search_via address : {address}')
         driver.get(url)
         WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.XPATH, "//input[@name='q']")))
         try:
@@ -128,12 +128,12 @@ class Clustr():
                 if person_url:
                     self.scrape_person(driver, person_url, row)
                 else:
-                    address_url = self.get_address_url(row['Address'])
-                    if address_url:
-                        person_url = self.search_address(driver, row['Address'], address_url, row['Executive First Name'], row['Executive Last Name'])
-                        if person_url:
-                            self.scrape_person(driver, person_url, row)
-
+                    if type(row['Address']) != float:
+                        address_url = self.get_address_url(row['Address'])
+                        if address_url:
+                            person_url = self.search_address(driver, row['Address'], address_url, row['Executive First Name'], row['Executive Last Name'])
+                            if person_url:
+                                self.scrape_person(driver, person_url, row)
 
 c = Clustr()
 c.start()
