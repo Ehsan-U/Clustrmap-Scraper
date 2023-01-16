@@ -9,6 +9,7 @@ from selenium.common.exceptions import NoSuchElementException,StaleElementRefere
 from parsel import Selector
 from urllib.parse import urljoin
 import coloredlogs, logging
+import requests
 
 logger = logging.getLogger("Clustrmaps Scraper")
 coloredlogs.install(level='DEBUG', logger=logger)
@@ -16,12 +17,22 @@ coloredlogs.install(level='DEBUG', logger=logger)
 class Clustr():
     def __init__(self):
         self.BASE_URL = 'https://clustrmaps.com/'
+        self.search_api = "https://clustrmaps.com/s/"
         self.CSV_PATH = 'input.csv'
         self.all_person_data = pd.read_csv(self.CSV_PATH)
         self.all_data = []
         self.all_cols = self.all_person_data.columns.to_list()
         if 'PROBABLE EMAIL' not in self.all_cols:
             self.all_cols.append('PROBABLE EMAIL')
+        self.headers = {
+          'Accept': 'application/json, text/javascript, */*; q=0.01',
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+          'X-Requested-With': 'XMLHttpRequest',
+          'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36',
+          'host': 'clustrmaps.com',
+        }
+
+
 
     def init_driver(self):
         driver = Chrome(headless=False)
@@ -38,22 +49,31 @@ class Clustr():
             return False
 
 
-    def search_person(self, person_name, driver):
-        logger.debug(f'search_person : {person_name}')
-        driver.get(self.BASE_URL)
-        time.sleep(1.5)
-        WebDriverWait(driver, 20).until(EC.visibility_of_element_located((By.XPATH, '//a[text()="People"]')))
-        driver.find_element(By.XPATH, '//a[text()="People"]').click()
-        time.sleep(1.5)
-        driver.find_element(By.XPATH, '//input[@name="q"]').send_keys(person_name)
-        driver.find_element(By.XPATH, '//input[@name="q"]').submit()
-        logger.debug(f'search_person completed')
+    # search by name
+    def get_person_url(self, first, last):
+        logger.debug(f'search_via name : {first+" "+last}')
+        payload = {"action":'tools.suggest_all', "start":first}
+        response = requests.post(self.search_api, headers=self.headers, data=payload).json()
+        if response.get("values").get("person"):
+            for person in response.get("values").get("person"):
+                name = person.get("name").lower()
+                if first.lower() in name and last.lower() in name:
+                    url = urljoin(self.BASE_URL, person.get("url"))
+                    return url
 
-    def search_address(self, driver, address, first, last):
+    # search by address
+    def get_address_url(self, address):
+        payload = {"action":'tools.suggest_all', "start":address}
+        response = requests.post(self.search_api, headers=self.headers, data=payload).json()
+        if response.get("values").get("address"):
+            for addr in response.get("values").get("address"):
+                url = urljoin(self.BASE_URL, addr.get("url"))
+                return url
+    
+
+    def search_address(self, driver, address, url, first, last):
         logger.debug(f'search_via address : {address}')
-        driver.get(self.BASE_URL)
-        driver.find_element(By.XPATH, "//input[@name='address']").send_keys(address)
-        driver.find_element(By.XPATH, "//input[@name='address']").submit()
+        driver.get(url)
         WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.XPATH, "//input[@name='q']")))
         try:
             driver.find_element(By.XPATH, "//p[@class='lead']")
@@ -65,13 +85,8 @@ class Clustr():
                 if self.is_match(found_name, first, last):
                     logger.info(" Match Found ")
                     return url
-        else:
-            return None
-    def get_person_with_specific_city(self, city, driver):
-        logger.debug(f'get_person_with_specific_city')
-        sel = Selector(driver.page_source)
-        return sel.xpath(f'//div[@itemprop="Person" and .//div[@class="person_city person_details i_home" and contains(text(),"{city}")]]/div/div/a/@href').get()
 
+ 
     def extract_person_data(self, row, driver):
         logger.debug(f'extract_person_data')
         sel = Selector(driver.page_source)
@@ -86,53 +101,16 @@ class Clustr():
         row[f'Phone'] = ",".join(phones)
         return row
 
-    def check_if_xpath_exists(self, xpath, driver):
-        logger.debug(f'check_if_xpath_exists:{xpath}')
-        try:
-            driver.find_element(By.XPATH, xpath)
-        except NoSuchElementException:
-            return False
-        return True
 
-    def is_result_found(self, driver):
-        logger.debug(f'is_result_found')
-        for i in range(20):
-            if self.check_if_xpath_exists('//div[@itemprop="Person"]', driver):
-                return True
-            elif self.check_if_xpath_exists("//h1[contains(text(), 'No results found')]", driver):
-                return False
-            time.sleep(1)
-        return False
+    def scrape_person(self, driver, person_url, row):
+        driver.get(urljoin(self.BASE_URL,person_url))
+        WebDriverWait(driver, 20).until(EC.visibility_of_element_located( (By.XPATH, '//h1/span[@itemprop="name"]') ))
+        person_info = self.extract_person_data(row, driver)
+        self.all_data.append(person_info)
+        logger.info(f"Scraped: {person_info}")
+        df = pd.DataFrame(self.all_data, columns=self.all_cols)
+        df.to_csv('out.csv')
 
-    def scrape_person(self, driver, person_url, row, people_method=None):
-        if people_method:
-            while True:
-                if not self.is_result_found(driver):
-                    break
-                person_url = self.get_person_with_specific_city(row['County'], driver)
-                if person_url:
-                    driver.get(urljoin(self.BASE_URL,person_url))
-                    WebDriverWait(driver, 20).until(EC.visibility_of_element_located( (By.XPATH, '//h1/span[@itemprop="name"]') ))
-                    person_info = self.extract_person_data(row, driver)
-                    
-                    self.all_data.append(person_info)
-                    logger.info(f"Scraped: {person_info}")
-                    df = pd.DataFrame(self.all_data, columns=self.all_cols)
-                    df.to_csv('out.csv')
-                    break
-                else:
-                    if self.check_if_xpath_exists('//li[@class="page-item active"]/following-sibling::li/a', driver):
-                        driver.find_element(By.XPATH, '//li[@class="page-item active"]/following-sibling::li/a').click()
-                    else:
-                        break
-        else:
-            driver.get(urljoin(self.BASE_URL,person_url))
-            WebDriverWait(driver, 20).until(EC.visibility_of_element_located( (By.XPATH, '//h1/span[@itemprop="name"]') ))
-            person_info = self.extract_person_data(row, driver)
-            self.all_data.append(person_info)
-            logger.info(f"Scraped: {person_info}")
-            df = pd.DataFrame(self.all_data, columns=self.all_cols)
-            df.to_csv('out.csv')
 
     def start(self):
         driver = self.init_driver()
@@ -145,16 +123,17 @@ class Clustr():
                 logger.warn(f"Skipping row as Phone number already exist for the following row")
                 self.all_data.append(row)
                 continue
+            if type(row['Executive First Name']) != float and type(row['Executive Last Name']) != float:
+                person_url = self.get_person_url(row['Executive First Name'], row['Executive Last Name'])
+                if person_url:
+                    self.scrape_person(driver, person_url, row)
+                else:
+                    address_url = self.get_address_url(row['Address'])
+                    if address_url:
+                        person_url = self.search_address(driver, row['Address'], address_url, row['Executive First Name'], row['Executive Last Name'])
+                        if person_url:
+                            self.scrape_person(driver, person_url, row)
 
-            person_url = self.search_address(driver, row['Address'], row['Executive First Name'], row['Executive Last Name'])
-            if person_url:
-                self.scrape_person(driver, person_url, row)
-                continue
-            else:
-                self.search_person(f'{row["Executive First Name"]} {row["Executive Last Name"]}', driver)
-                self.scrape_person(driver, None, row, people_method=True)
-                
 
-if __name__ == '__main__':
-    c = Clustr()
-    c.start()
+c = Clustr()
+c.start()
