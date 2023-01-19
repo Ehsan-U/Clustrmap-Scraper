@@ -49,8 +49,39 @@ class Clustr():
             return False
 
 
+    def is_exist(self, driver, element):
+        try:
+            driver.find_element(By.XPATH, element)
+        except (NoSuchElementException, StaleElementReferenceException):
+            return False
+        else:
+            return True
+
+
+
+    def match_county(self, url, county, driver, single_result):
+        driver.get(url)
+        WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.XPATH, "//div[@class='container mt-4']")))
+        if single_result:
+            county_path = "//li[@class='breadcrumb-item active'][last()]"
+            if self.is_exist(driver, county_path):
+                found_county = driver.find_element(By.XPATH, county_path).text
+                if county.lower() in found_county.lower():
+                    return True
+        else:
+            counties_path = "//div[@itemprop='Person']"
+            if self.is_exist(driver, counties_path):
+                counties = driver.find_elements(By.XPATH, counties_path)
+                for c in counties:
+                    c_name = c.find_element(By.XPATH, ".//div[@class='person_city person_details i_home']").text
+                    if county.lower() in c_name.lower():
+                        url = c.find_element(By.XPATH, ".//span[@itemprop='name']/parent::a/parent::div/a").get_attribute("href")
+                        return url
+        return False
+
+
     # search by name
-    def get_person_url(self, first, last):
+    def get_person_url(self, first, last, county, driver):
         logger.debug(f'search_via name : {first+" "+last}')
         payload = {"action":'tools.suggest_all', "start":first}
         response = requests.post(self.search_api, headers=self.headers, data=payload).json()
@@ -59,7 +90,14 @@ class Clustr():
                 name = person.get("name").lower()
                 if first.lower() in name and last.lower() in name:
                     url = urljoin(self.BASE_URL, person.get("url"))
-                    return url
+                    if "persons" in name:
+                        result = self.match_county(url, county, driver, single_result=False)
+                        if result:
+                            return result
+                    else:
+                        if self.match_county(url, county, driver, single_result=True):
+                            return url
+
 
     # search by address
     def get_address_url(self, address):
@@ -103,7 +141,8 @@ class Clustr():
 
 
     def scrape_person(self, driver, person_url, row):
-        driver.get(urljoin(self.BASE_URL,person_url))
+        print(person_url)
+        driver.get(person_url)
         WebDriverWait(driver, 20).until(EC.visibility_of_element_located( (By.XPATH, '//h1/span[@itemprop="name"]') ))
         person_info = self.extract_person_data(row, driver)
         self.all_data.append(person_info)
@@ -124,7 +163,7 @@ class Clustr():
                 self.all_data.append(row)
                 continue
             if type(row['Executive First Name']) != float and type(row['Executive Last Name']) != float:
-                person_url = self.get_person_url(row['Executive First Name'], row['Executive Last Name'])
+                person_url = self.get_person_url(row['Executive First Name'], row['Executive Last Name'], row['County'], driver)
                 if person_url:
                     self.scrape_person(driver, person_url, row)
                 else:
