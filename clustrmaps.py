@@ -18,6 +18,24 @@ coloredlogs.install(level='DEBUG', logger=logger)
 
 class Clustr():
     def __init__(self):
+        self.common_names = [
+            'joseph',
+            'mark',
+            'david',
+            'brandon',
+            'michael',
+            'john',
+            'garcia',
+            'lopez',
+            'williams',
+            'smith',
+            'jackson',
+            'henderson',
+            'garrett',
+            'anderson',
+            'cooper',
+            'taylor'
+        ]
         self.BASE_URL = 'https://clustrmaps.com/'
         self.search_api = "https://clustrmaps.com/s/"
         self.CSV_PATH = 'input.csv'
@@ -63,7 +81,7 @@ class Clustr():
     def match_county(self, url, county, driver, single_result, recursive=None):
         if not recursive:
             driver.get(url)
-        WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.XPATH, "//div[@class='container mt-4']")))
+        WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, "//div[@class='container mt-4']")))
         time.sleep(5)
         sel = scrapy.Selector(text=driver.page_source)
         if single_result:
@@ -122,7 +140,7 @@ class Clustr():
 
     def search_address(self, driver, address, url, first, last, county):
         driver.get(url)
-        WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.XPATH, "//input[@name='q']")))
+        WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, "//input[@name='q']")))
         try:
             driver.find_element(By.XPATH, "//p[@class='lead']")
         except NoSuchElementException:
@@ -155,7 +173,7 @@ class Clustr():
     def scrape_person(self, driver, person_url, row):
         person_url = urljoin(self.BASE_URL, person_url)
         driver.get(person_url)
-        WebDriverWait(driver, 20).until(EC.visibility_of_element_located( (By.XPATH, '//h1/span[@itemprop="name"]') ))
+        WebDriverWait(driver, 30).until(EC.visibility_of_element_located( (By.XPATH, '//h1/span[@itemprop="name"]') ))
         person_info = self.extract_person_data(row, driver)
         self.all_data.append(person_info)
         logger.info(f"Scraped: {person_info}")
@@ -166,23 +184,30 @@ class Clustr():
     def start(self):
         driver = self.init_driver()
         for n, row in self.all_person_data.iterrows():
-            if not(row['Executive First Name'] or row['Executive Last Name'] or row['County']):
-                logger.warn(f"Skipping row as there is missing of one of following field: First Name, Last Name, and County")
-                self.all_data.append(row)
-                continue
-            elif not(row['Phone']) and row['Phone'] != 'Not Available':
-                logger.warn(f"Skipping row as Phone number already exist for the following row")
-                self.all_data.append(row)
-                continue
-            if type(row['Executive First Name']) != float and type(row['Executive Last Name']) != float:
-                person_url = self.get_person_url(row['Executive First Name'], row['Executive Last Name'], row['County'], driver)
+            first_name = row['Executive First Name']
+            last_name = row['Executive Last Name']
+            if type(first_name) != float and type(last_name) != float:
+                if not(first_name or last_name or row['County']) :
+                    logger.warning(f"Skipping row as there is missing of one of following field: First Name, Last Name, and County")
+                    self.all_data.append(row)
+                    continue
+                elif not(row['Phone']) and row['Phone'] != 'Not Available':
+                    logger.warning(f"Skipping row as Phone number already exist for the following row")
+                    self.all_data.append(row)
+                    continue
+                elif any([name for name in self.common_names if name.lower() in first_name.lower() or name.lower() in last_name.lower()]):
+                    logger.warning(f"Skipping row (common)")
+                    self.all_data.append(row)
+                    continue
+                
+                person_url = self.get_person_url(first_name, last_name, row['County'], driver)
                 if person_url:
                     self.scrape_person(driver, person_url, row)
                 else:
                     if type(row['Address']) != float:
                         address_url = self.get_address_url(row['Address'])
                         if address_url:
-                            person_url = self.search_address(driver, row['Address'], address_url, row['Executive First Name'], row['Executive Last Name'], row['County'])
+                            person_url = self.search_address(driver, row['Address'], address_url, first_name, last_name, row['County'])
                             if person_url:
                                 self.scrape_person(driver, person_url, row)
 
